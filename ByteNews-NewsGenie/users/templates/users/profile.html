@@ -1,0 +1,107 @@
+{% extends 'news/base.html' %}
+{% load humanize %}
+
+{% block title %}{{ profile_user.username }}'s Profile{% endblock %}
+
+{% block content %}
+<div class="profile-page-container mt-4">
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <div class="app-card profile-info-card text-center">
+                <div class="profile-avatar mb-3">
+                    <i class="bi bi-person-circle"></i>
+                </div>
+                <h2 class="profile-full-name">
+                    {% if profile_user.get_full_name %}
+                        {{ profile_user.get_full_name }}
+                    {% else %}
+                        {{ profile_user.username }}
+                    {% endif %}
+                </h2>
+                <p class="profile-username-display">@{{ profile_user.username }}</p>
+                    
+                {% if request.user == profile_user %}
+                    <a href="{% url 'users:edit_profile' %}" class="btn app-btn secondary-btn mt-3"><i class="bi bi-pencil-fill me-2"></i> Edit Profile</a>
+                {% endif %}
+
+                <hr class="my-4">
+                
+                <div class="profile-meta-info text-start">
+                    {% if profile_user.profile.bio %}
+                        <div class="meta-item">
+                            <i class="bi bi-quote"></i>
+                            <p class="profile-bio">{{ profile_user.profile.bio }}</p>
+                        </div>
+                    {% endif %}
+                    <div class="meta-item">
+                        <i class="bi bi-envelope-fill"></i>
+                        <span>{{ profile_user.email }}</span>
+                    </div>
+                    <div class="meta-item">
+                        <i class="bi bi-calendar-check-fill"></i>
+                        <span>Joined {{ profile_user.date_joined|date:"F Y" }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="app-card profile-activity-card">
+                
+                <h3 class="section-title mb-3">User Stats</h3>
+                <div class="profile-stats-grid mb-4">
+                    <div class="stat-card">
+                        <div class="stat-value">{{ user_comments.count }}</div>
+                        <div class="stat-label">Comments Made</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">
+                            <i class="bi bi-fire"></i> {{ profile_user.profile.streak_count }}
+                        </div>
+                        <div class="stat-label">Reading Streak</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value text-success">
+                            <i class="bi bi-hand-thumbs-up-fill"></i> {{ useful_count }}
+                        </div>
+                        <div class="stat-label">
+                            {% if request.user == profile_user %}
+                                <a href="{% url 'users:useful-articles-list' %}">Useful Articles</a>
+                            {% else %}
+                                Useful Articles
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value text-danger">
+                            <i class="bi bi-hand-thumbs-down-fill"></i> {{ not_useful_count }}
+                        </div>
+                        <div class="stat-label">
+                            {% if request.user == profile_user %}
+                                <a href="{% url 'users:not-useful-articles-list' %}">Not Useful Articles</a>
+                            {% else %}
+                                Not Useful Articles
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <h3 class="section-title mb-3">Recent Activity</h3>
+                {% if user_comments %}
+                    <div class="list-group">
+                        {% for comment in user_comments %}
+                            <a href="{% url 'news:detail' comment.article.pk %}#comment-{{ comment.pk }}" class="list-group-item list-group-item-action profile-comment-card">
+                                <p class="comment-content mb-1">"{{ comment.content|truncatewords:20 }}"</p>
+                                <small class="comment-meta">
+                                    Commented on "{{ comment.article.title|truncatechars:30 }}" &middot; {{ comment.created_at|naturaltime }}
+                                </small>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-center text-muted mt-5">This user hasn't made any comments yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

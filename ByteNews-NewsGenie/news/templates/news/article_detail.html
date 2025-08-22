@@ -1,0 +1,622 @@
+{% extends 'news/base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}{{ article.title }}{% endblock %}
+
+{% block content %}
+<div class="container app-main-container mt-5">
+    <div class="article-header-section text-center mb-5">
+        <h1 class="article-title-heading">{{ article.title }}</h1>
+        <p class="article-meta-text">By {{ article.author }} on {{ article.published_at|date:"F d, Y" }}</p>
+        <div class="category-badges mt-3">
+            {% for category in article.category.all %}
+                <span class="badge category-pill me-2">{{ category.name }}</span>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="row justify-content-center mb-5">
+        <div class="col-lg-10 col-md-12">
+            <div class="action-buttons-wrapper text-center mb-4">
+                {% if article.content %}
+                    <button id="generateSummaryBtn" class="btn app-btn primary-btn">
+                        <i class="bi bi-robot me-2"></i> {% if article.summary %}View Summary{% else %}Generate Summary{% endif %}
+                    </button>
+                {% endif %}
+                {% if article.summary %}
+                    <button id="generateAudioBtn" class="btn app-btn secondary-btn">
+                        <i class="bi bi-megaphone me-2"></i> {% if article.audio_file %}Play Audio{% else %}Generate Audio{% endif %}
+                    </button>
+                {% endif %}
+                <button class="btn app-btn icon-btn like-btn {% if is_liked_by_user %}liked{% endif %}" data-article-id="{{ article.pk }}" {% if not user.is_authenticated %}disabled title="Login to like" {% endif %}>
+                    <i class="bi {% if is_liked_by_user %}bi-heart-fill{% else %}bi-heart{% endif %}"></i>
+                    <span class="like-count">{{ article.likes.count }}</span>
+                </button>
+                <button id="showWordCloudBtn" class="btn app-btn outline-btn">
+                    <i class="bi bi-cloud-check-fill me-2"></i> View Word Cloud
+                </button>
+                <button class="btn app-btn icon-btn bookmark-btn {% if is_bookmarked_by_user %}bookmarked{% endif %}" data-article-id="{{ article.pk }}" {% if not user.is_authenticated %}disabled title="Login to bookmark" {% endif %}>
+                    <i class="bi {% if is_bookmarked_by_user %}bi-bookmark-fill{% else %}bi-bookmark{% endif %}"></i>
+                </button>
+            </div>
+
+            <div id="summarySection" class="app-card summary-card mb-4" style="display:none;">
+                <h4 class="card-heading mb-0"><i class="bi bi-file-earmark-text-fill me-2"></i> Article Summary</h4>
+                <div id="articleSummaryText" class="card-body-text summary-content mt-4">
+                    {% if article.summary %}{{ article.summary|linebreaksbr }}{% endif %}
+                </div>
+            </div>
+
+            <div id="audioSection" class="app-card audio-card mb-4" style="display:none;">
+                <h5 class="card-heading"><i class="bi bi-headphones me-2"></i> Listen to Summary</h5>
+                <audio id="summaryAudioPlayer" controls class="w-100 audio-player">
+                    {% if article.audio_file %}
+                        <source src="{{ article.audio_file.url }}" type="audio/mpeg">
+                    {% endif %}
+                    Your browser does not support the audio element.
+                </audio>
+            </div>
+
+            <div id="wordCloudSection" class="app-card word-cloud-card mb-4" style="display:none;">
+                <h4 class="card-heading"><i class="bi bi-bar-chart-fill me-2"></i> Article Word Cloud</h4>
+                <div class="text-center" id="wordCloudContent">
+                    <img id="wordCloudImage" src="" alt="Article Word Cloud" class="img-fluid" style="display:none;">
+                    <div id="wordCloudSpinner" class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem; display:none;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider my-5">
+            <div class="app-card full-article-content-card mb-4">
+                <h3 class="card-heading"><i class="bi bi-book-fill me-2"></i> Full Article</h3>
+                <div class="card-body-text full-article-text">{{ article.content|linebreaksbr }}</div>
+            </div>
+
+            {% if user.is_authenticated %}
+            <div class="app-card article-feedback-card mb-4">
+                <h4 class="card-heading"><i class="bi bi-hand-index-thumb-fill me-2"></i> Found the Article Helpful?</h4>
+                <div class="d-flex gap-3 mt-3">
+                    <form action="{% url 'news:article-feedback' article_id=article.pk %}" method="POST" class="w-100">
+                        {% csrf_token %}
+                        <button type="submit" name="feedback" value="useful" class="btn app-btn success-btn w-100">
+                            <i class="bi bi-hand-thumbs-up"></i> Useful
+                        </button>
+                    </form>
+                    <form action="{% url 'news:article-feedback' article_id=article.pk %}" method="POST" class="w-100">
+                        {% csrf_token %}
+                        <button type="submit" name="feedback" value="not_useful" class="btn app-btn danger-btn w-100">
+                            <i class="bi bi-hand-thumbs-down"></i> Not Useful
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            <hr class="section-divider my-5">
+
+            <div class="app-card comments-section-card mb-4">
+                <h4 class="card-heading"><i class="bi bi-chat-left-text-fill me-2"></i> Comments ({{ comments.count }})</h4>
+                {% if user.is_authenticated %}
+                    <div class="comment-form-wrapper mb-4">
+                        <h5 class="mb-3">Leave a Comment</h5>
+                        <form method="post">
+                            {% csrf_token %}
+                            <input type="hidden" name="comment_submit" value="1">
+                            <div class="mb-3">
+                                {{ comment_form.content }}
+                            </div>
+                            <button type="submit" class="btn app-btn primary-btn submit-comment-btn">Post Comment</button>
+                        </form>
+                    </div>
+                {% else %}
+                    <div class="alert app-alert alert-info mb-4">Please <a href="{% url 'users:login' %}">login</a> to leave a comment.</div>
+                {% endif %}
+
+                {% for comment in comments %}
+                    <div class="comment-item p-3 mb-3 border rounded">
+                        <p class="comment-meta mb-1">
+                            <strong>{{ comment.user.username }}</strong>
+                            <span class="text-muted small ms-2">{{ comment.created_at|naturaltime }}</span>
+                        </p>
+                        <p class="comment-content mb-0">{{ comment.content|linebreaksbr }}</p>
+                        <div class="comment-reactions-wrapper mt-3">
+                            <button class="btn reaction-btn {% if comment.user_reaction == 'like' %}active{% endif %}" data-comment-id="{{ comment.pk }}" data-reaction-type="like" {% if not user.is_authenticated %}disabled{% endif %}>
+                                👍 <span class="reaction-count">{{ comment.like_count }}</span>
+                            </button>
+                            <button class="btn reaction-btn {% if comment.user_reaction == 'love' %}active{% endif %}" data-comment-id="{{ comment.pk }}" data-reaction-type="love" {% if not user.is_authenticated %}disabled{% endif %}>
+                                ❤️ <span class="reaction-count">{{ comment.love_count }}</span>
+                            </button>
+                            <button class="btn reaction-btn {% if comment.user_reaction == 'laugh' %}active{% endif %}" data-comment-id="{{ comment.pk }}" data-reaction-type="laugh" {% if not user.is_authenticated %}disabled{% endif %}>
+                                😂 <span class="reaction-count">{{ comment.laugh_count }}</span>
+                            </button>
+                            <button class="btn reaction-btn {% if comment.user_reaction == 'idea' %}active{% endif %}" data-comment-id="{{ comment.pk }}" data-reaction-type="idea" {% if not user.is_authenticated %}disabled{% endif %}>
+                                💡 <span class="reaction-count">{{ comment.idea_count }}</span>
+                            </button>
+                        </div>
+                    </div>
+                {% empty %}
+                    <p class="text-muted text-center">No comments yet. Be the first to share your thoughts!</p>
+                {% endfor %}
+            </div>
+
+            <div class="social-share-section my-5">
+                <h5 class="share-title"><i class="bi bi-share-fill"></i> Share:</h5>
+                <div class="d-flex align-items-center gap-3">
+                    <a href="https://twitter.com/intent/tweet?url={{ request.build_absolute_uri }}&text={{ article.title|urlencode }}" target="_blank" class="social-share-btn twitter">
+                        <i class="bi bi-twitter"></i>
+                    </a>
+                    <a href="https://www.facebook.com/sharer/sharer.php?u={{ request.build_absolute_uri }}" target="_blank" class="social-share-btn facebook">
+                        <i class="bi bi-facebook"></i>
+                    </a>
+                    <a href="https://www.linkedin.com/shareArticle?mini=true&url={{ request.build_absolute_uri }}&title={{ article.title|urlencode }}&summary={{ article.summary|truncatechars:100|urlencode }}" target="_blank" class="social-share-btn linkedin">
+                        <i class="bi bi-linkedin"></i>
+                    </a>
+                    <button id="copyLinkBtn" class="social-share-btn copy-link" data-url="{{ request.build_absolute_uri }}">
+                        <i class="bi bi-clipboard-check"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="text-center mt-5 mb-5">
+                <a href="{% url 'news:article_list' %}" class="btn app-btn outline-btn back-to-articles-btn">
+                    <i class="bi bi-arrow-left-circle-fill me-2"></i> Back to Articles
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden element to store pre-existing summary content -->
+{% if article.summary %}
+<div id="preExistingSummary" style="display:none;">{{ article.summary|linebreaksbr }}</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Global variables for summary and audio availability
+    const articleHasSummaryInitial = {% if article.summary %}true{% else %}false{% endif %};
+    const articleHasAudioInitial = {% if article.audio_file %}true{% else %}false{% endif %};
+    const articleId = {{ article.pk }};
+    
+    // Get pre-existing summary content
+    let preExistingSummaryContent = '';
+    const preExistingSummaryElement = document.getElementById('preExistingSummary');
+    if (preExistingSummaryElement) {
+        preExistingSummaryContent = preExistingSummaryElement.innerHTML;
+    }
+
+    // CSRF token utility
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    // Global Toast/Notification Function
+    function showToast(message, type = 'info') {
+        const toastContainer = document.createElement('div');
+        toastContainer.className = `toast align-items-center text-white bg-${type} border-0 fade show position-fixed bottom-0 end-0 m-3`;
+        toastContainer.style.zIndex = '9999';
+        toastContainer.setAttribute('role', 'alert');
+        toastContainer.setAttribute('aria-live', 'assertive');
+        toastContainer.setAttribute('aria-atomic', 'true');
+
+        toastContainer.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.parentElement.parentElement.remove()"></button>
+            </div>
+        `;
+        document.body.appendChild(toastContainer);
+
+        setTimeout(() => {
+            toastContainer.remove();
+        }, 5000);
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Reading metrics tracking variables
+        let timeOnPage = 0;
+        let timerInterval;
+        const sendMetricsInterval = 10 * 1000;
+        let maxScrollDepth = 0.0;
+        const fullArticleContent = document.querySelector('.full-article-content-card');
+
+        // DOM element references
+        const generateSummaryBtn = document.getElementById('generateSummaryBtn');
+        const generateAudioBtn = document.getElementById('generateAudioBtn');
+        const summarySection = document.getElementById('summarySection');
+        const articleSummaryText = document.getElementById('articleSummaryText');
+        const audioSection = document.getElementById('audioSection');
+        const summaryAudioPlayer = document.getElementById('summaryAudioPlayer');
+        const actionButtonsContainer = document.querySelector('.action-buttons-wrapper');
+        const showWordCloudBtn = document.getElementById('showWordCloudBtn');
+        const wordCloudSection = document.getElementById('wordCloudSection');
+        const wordCloudImage = document.getElementById('wordCloudImage');
+        const wordCloudSpinner = document.getElementById('wordCloudSpinner');
+        const copyLinkBtn = document.getElementById('copyLinkBtn');
+
+        // Initial state adjustments
+        {% if article.audio_file %}
+            if (summaryAudioPlayer) {
+                summaryAudioPlayer.src = "{{ article.audio_file.url }}";
+                summaryAudioPlayer.load();
+            }
+        {% endif %}
+
+        if (summarySection) {
+            summarySection.style.display = 'none';
+        }
+
+        // Handle Generate Summary Button Click
+        if (generateSummaryBtn) {
+            generateSummaryBtn.addEventListener('click', function() {
+                const btn = this;
+                const originalBtnHtml = btn.innerHTML;
+
+                if (articleHasSummaryInitial && preExistingSummaryContent.trim().length > 0) {
+                    if (summarySection.style.display === 'none') {
+                        articleSummaryText.innerHTML = preExistingSummaryContent;
+                        summarySection.style.display = 'block';
+                        btn.innerHTML = '<i class="bi bi-eye-slash me-2"></i> Hide Summary';
+                    } else {
+                        summarySection.style.display = 'none';
+                        btn.innerHTML = '<i class="bi bi-eye me-2"></i> View Summary';
+                    }
+                    return;
+                }
+                
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+                btn.disabled = true;
+
+                fetch(`/article/${articleId}/generate-summary/`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrftoken,
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        articleSummaryText.innerHTML = data.summary.replace(/\n/g, '<br>');
+                        summarySection.style.display = 'block';
+                        btn.innerHTML = '<i class="bi bi-eye-slash me-2"></i> Hide Summary';
+
+                        let currentGenerateAudioBtn = document.getElementById('generateAudioBtn');
+                        if (currentGenerateAudioBtn && !articleHasAudioInitial) {
+                            currentGenerateAudioBtn.style.display = 'inline-block';
+                        } else if (!currentGenerateAudioBtn) {
+                            currentGenerateAudioBtn = document.createElement('button');
+                            currentGenerateAudioBtn.id = 'generateAudioBtn';
+                            currentGenerateAudioBtn.className = 'btn app-btn secondary-btn';
+                            currentGenerateAudioBtn.innerHTML = '<i class="bi bi-megaphone me-2"></i> Generate Audio';
+                            actionButtonsContainer.appendChild(currentGenerateAudioBtn);
+                            
+                            // Add event listener to the new button
+                            currentGenerateAudioBtn.addEventListener('click', handleGenerateAudio);
+                        }
+
+                        showToast('Summary generated successfully!', 'success');
+                    } else {
+                        showToast(data.message || 'Failed to generate summary.', 'danger');
+                        btn.innerHTML = originalBtnHtml;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('An error occurred while generating summary.', 'danger');
+                    btn.innerHTML = originalBtnHtml;
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                });
+            });
+        }
+
+        // Function to handle Generate Audio Button Click
+        function handleGenerateAudio() {
+            const btn = this;
+            const originalBtnHtml = btn.innerHTML;
+
+            if (articleHasAudioInitial && summaryAudioPlayer.src && summaryAudioPlayer.src !== window.location.href + '#') {
+                if (audioSection.style.display === 'none') {
+                    audioSection.style.display = 'block';
+                    summaryAudioPlayer.play();
+                    btn.innerHTML = '<i class="bi bi-volume-mute-fill me-2"></i> Hide Audio';
+                    showToast('Playing existing audio summary!', 'info');
+                } else {
+                    summaryAudioPlayer.pause();
+                    audioSection.style.display = 'none';
+                    btn.innerHTML = '<i class="bi bi-megaphone me-2"></i> Play Audio';
+                }
+                return;
+            }
+
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+            btn.disabled = true;
+
+            fetch(`/article/${articleId}/generate-audio/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken,
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    summaryAudioPlayer.src = data.audio_url;
+                    summaryAudioPlayer.load();
+                    summaryAudioPlayer.play();
+                    audioSection.style.display = 'block';
+                    btn.innerHTML = '<i class="bi bi-volume-mute-fill me-2"></i> Hide Audio';
+                    showToast('Audio generated and playing!', 'success');
+                } else {
+                    showToast(data.message || 'Failed to generate audio.', 'danger');
+                    btn.innerHTML = originalBtnHtml;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('An error occurred while generating audio.', 'danger');
+                btn.innerHTML = originalBtnHtml;
+            })
+            .finally(() => {
+                btn.disabled = false;
+            });
+        }
+
+        // Add event listener to existing generate audio button
+        if (generateAudioBtn) {
+            generateAudioBtn.addEventListener('click', handleGenerateAudio);
+        }
+
+        // Article Liking Logic
+        const likeButtons = document.querySelectorAll('.like-btn');
+        likeButtons.forEach(button => {
+            if (!button.disabled) {
+                button.addEventListener('click', function() {
+                    const currentArticleId = this.dataset.articleId;
+                    const likeIcon = this.querySelector('i');
+                    const likeCountSpan = this.querySelector('.like-count');
+                    
+                    fetch(`/article/${currentArticleId}/like-toggle/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrftoken,
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify({})
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            if (data.is_liked) {
+                                likeIcon.classList.remove('bi-heart');
+                                likeIcon.classList.add('bi-heart-fill');
+                                button.classList.add('liked');
+                            } else {
+                                likeIcon.classList.remove('bi-heart-fill');
+                                likeIcon.classList.add('bi-heart');
+                                button.classList.remove('liked');
+                            }
+                            likeCountSpan.textContent = data.total_likes;
+                            showToast(data.message, 'info');
+                        } else {
+                            showToast(data.message || 'Failed to update like status.', 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error toggling like:', error);
+                        showToast('An error occurred while toggling like.', 'danger');
+                    });
+                });
+            }
+        });
+
+        // Article Bookmarking Logic
+        const bookmarkButtons = document.querySelectorAll('.bookmark-btn');
+        bookmarkButtons.forEach(button => {
+            if (!button.disabled) {
+                button.addEventListener('click', function() {
+                    const currentArticleId = this.dataset.articleId;
+                    const bookmarkIcon = this.querySelector('i');
+                    
+                    fetch(`/article/${currentArticleId}/bookmark-toggle/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrftoken,
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: JSON.stringify({})
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            if (data.is_bookmarked) {
+                                bookmarkIcon.classList.remove('bi-bookmark');
+                                bookmarkIcon.classList.add('bi-bookmark-fill');
+                                button.classList.add('bookmarked');
+                            } else {
+                                bookmarkIcon.classList.remove('bi-bookmark-fill');
+                                bookmarkIcon.classList.add('bi-bookmark');
+                                button.classList.remove('bookmarked');
+                            }
+                            showToast(data.message, 'info');
+                        } else {
+                            showToast(data.message || 'Failed to update bookmark status.', 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error toggling bookmark:', error);
+                        showToast('An error occurred while toggling bookmark.', 'danger');
+                    });
+                });
+            }
+        });
+
+        // Word Cloud functionality
+        if (showWordCloudBtn) {
+            showWordCloudBtn.addEventListener('click', function() {
+                if (wordCloudSection.style.display === 'none') {
+                    wordCloudSection.style.display = 'block';
+                    wordCloudImage.style.display = 'none';
+                    wordCloudSpinner.style.display = 'block';
+
+                    wordCloudImage.src = `/article/${articleId}/wordcloud/`;
+
+                    wordCloudImage.onload = function() {
+                        wordCloudSpinner.style.display = 'none';
+                        wordCloudImage.style.display = 'block';
+                    };
+
+                    wordCloudImage.onerror = function() {
+                        wordCloudSpinner.style.display = 'none';
+                        showToast('Failed to generate word cloud.', 'danger');
+                    };
+                } else {
+                    wordCloudSection.style.display = 'none';
+                }
+            });
+        }
+
+        // Copy Link functionality
+        if (copyLinkBtn) {
+            copyLinkBtn.addEventListener('click', function() {
+                const urlToCopy = this.dataset.url;
+                navigator.clipboard.writeText(urlToCopy).then(function() {
+                    showToast('Article link copied to clipboard!', 'success');
+                }, function(err) {
+                    console.error('Could not copy text: ', err);
+                    showToast('Failed to copy link.', 'danger');
+                });
+            });
+        }
+
+        // Comment Reactions functionality
+        const reactionButtons = document.querySelectorAll('.reaction-btn');
+        reactionButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                if (this.disabled) return;
+
+                const commentId = this.dataset.commentId;
+                const reactionType = this.dataset.reactionType;
+                const wrapper = this.closest('.comment-reactions-wrapper');
+                const wasActive = this.classList.contains('active');
+
+                fetch(`/comment/${commentId}/toggle-reaction/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify({ reaction_type: reactionType })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Update all counts for this comment
+                        wrapper.querySelector('[data-reaction-type="like"] .reaction-count').textContent = data.reaction_counts.like_count;
+                        wrapper.querySelector('[data-reaction-type="love"] .reaction-count').textContent = data.reaction_counts.love_count;
+                        wrapper.querySelector('[data-reaction-type="laugh"] .reaction-count').textContent = data.reaction_counts.laugh_count;
+                        wrapper.querySelector('[data-reaction-type="idea"] .reaction-count').textContent = data.reaction_counts.idea_count;
+                        
+                        // Update active state
+                        wrapper.querySelectorAll('.reaction-btn').forEach(btn => btn.classList.remove('active'));
+                        if (!wasActive) {
+                            this.classList.add('active');
+                        }
+                    } else {
+                        showToast(data.message || 'An error occurred.', 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('An error occurred while updating reaction.', 'danger');
+                });
+            });
+        });
+
+        // Reading Metrics Tracking (only for authenticated users)
+        {% if user.is_authenticated %}
+            timerInterval = setInterval(() => {
+                timeOnPage++;
+            }, 1000);
+
+            window.addEventListener('scroll', function() {
+                if (fullArticleContent) {
+                    const rect = fullArticleContent.getBoundingClientRect();
+                    const scrollHeight = fullArticleContent.scrollHeight;
+                    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                    const clientHeight = document.documentElement.clientHeight;
+                    
+                    if (scrollHeight > clientHeight) {
+                        const currentScrollPercentage = Math.min(1.0, (scrollTop + clientHeight - rect.top) / scrollHeight);
+                        if (currentScrollPercentage > maxScrollDepth) {
+                            maxScrollDepth = Math.max(0, currentScrollPercentage);
+                        }
+                    } else {
+                        maxScrollDepth = 1.0;
+                    }
+                }
+            });
+
+            function sendArticleMetrics() {
+                const data = {
+                    article_id: articleId,
+                    time_on_page: timeOnPage,
+                    scroll_depth: Math.max(0, Math.min(1, maxScrollDepth))
+                };
+
+                fetch('/track-metrics/', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': csrftoken,
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        console.error('Failed to send metrics:', response.statusText);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error sending metrics:', error);
+                });
+            }
+
+            window.addEventListener('beforeunload', sendArticleMetrics);
+            window.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') {
+                    sendArticleMetrics();
+                }
+            });
+
+            setInterval(sendArticleMetrics, sendMetricsInterval);
+        {% endif %}
+    });
+</script>
+{% endblock %}
